@@ -1,0 +1,67 @@
+import torch
+import torch.nn as nn
+from ST_Transformer import STTransformer
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+def MAE(x, y):   #do it yourself MAE
+    out = torch.abs(x-y)
+    return out.mean(dim=0)  # Find the average value of the row, output each forecast time MAE
+
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    days = 10
+    val_days = 3    #Need to verify the number of days
+    train_num = 288*days
+    val_num = 288*val_days
+    row_num = train_num + val_num  
+    
+    v = pd.read_csv("PEMSD7/V_25.csv", nrows = row_num, header= None)
+    A = pd.read_csv("PEMSD7/W_25.csv", header= None)
+
+    A = np.array(A)
+    A = torch.tensor(A, dtype=torch.float32)      
+    v = np.array(v)
+    v = v.T
+    v = torch.tensor(v, dtype=torch.float32)
+    
+    #load the model
+    model = torch.load('model.pth')
+    criterion1 = nn.L1Loss()    #MAE
+    #criterion2 =               #MAPE 
+    criterion3 = nn.MSELoss()   #RMSE
+    pltx=[]
+    plty=[]
+    for t in range( train_num , row_num-21  ):
+        x = v[:, t:t+12]
+        x = x.unsqueeze(0)
+        y = v[:, t+14:t+21:3]
+        out = model(x, t)     
+        loss1 = criterion1(out, y ) 
+        loss2 = MAE(out, y)
+        loss3 = torch.sqrt(criterion3(out, y ) )
+        if t%100 == 0:
+            print("MAE loss", loss1)
+            print("MAE loss2:", loss2)
+            print("RMSE loss", loss3)
+            print("\n")
+        pltx.append(t)
+        plty.append(loss1.detach().numpy())
+        
+        if t%288 == 0:        # Draw daily MAE graph
+            plt.plot(pltx, plty, label=t)
+            pltx.clear()
+            plty.clear()
+    
+    #plt.plot(pltx, plty, label="STTN test")
+    #plt.scatter(pltx, plty)
+
+    plt.title("ST-Transformer test")
+    plt.xlabel("t")
+    plt.ylabel("MAE loss")
+    plt.legend()
+    plt.show()    
+    #print("output result", out)
+    #print("Output shape", out.shape) 
+    
